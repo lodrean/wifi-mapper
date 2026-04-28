@@ -20,6 +20,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -62,6 +63,7 @@ class MapViewModel(
             is MapAction.OnToggleManualMode -> toggleManualMode()
             is MapAction.OnDismissError -> _state.value = _state.value.copy(errorMessage = null)
             is MapAction.OnDismissThrottlingWarning -> _state.value = _state.value.copy(showWifiThrottlingWarning = false)
+            is MapAction.OnLoadSession -> loadSession(action.sessionId)
         }
     }
 
@@ -150,12 +152,7 @@ class MapViewModel(
             flushBuffersToDb()
 
             // Update session as inactive
-            val session = sessionRepository.getSessionById(_state.value.sessionId).let { flow ->
-                var result: com.wifimapper.domain.model.Session? = null
-                flow.collect { result = it }
-                result
-            }
-
+            val session = sessionRepository.getSessionById(_state.value.sessionId).first()
             session?.let {
                 sessionRepository.updateSession(it.copy(isActive = false))
             }
@@ -322,6 +319,54 @@ class MapViewModel(
             sessionRepository.addMeasurement(measurement)
         }
         measurementBuffer.clear()
+    }
+
+    private fun loadSession(sessionId: String) {
+        Log.d("MapViewModel", "Loading session: $sessionId")
+        viewModelScope.launch {
+            try {
+                _state.value = _state.value.copy(isLoading = true)
+                val session = sessionRepository.getSessionById(sessionId).first()
+                if (session == null) {
+                    _state.value = _state.value.copy(
+                        isLoading = false,
+                        errorMessage = "Session not found"
+                    )
+                    return@launch
+                }
+
+                val measurements = session.measurements.map { m ->
+                    MeasurementUi(
+                        x = m.x,
+                        y = m.y,
+                        rssiDbm = m.rssiDbm,
+                        ssid = m.bssid
+                    )
+                }
+                val trajectory = session.trajectory.map { t ->
+                    TrajectoryPointUi(t.x, t.y)
+                }
+
+                _state.value = _state.value.copy(
+                    sessionId = session.id,
+                    sessionName = session.name,
+                    isTracking = false,
+                    isLoading = false,
+                    isViewOnly = true,
+                    currentPosition = trajectory.lastOrNull()?.let { Offset(it.x, it.y) },
+                    trajectory = trajectory,
+                    measurements = measurements,
+                    stepCount = session.trajectory.count { it.isStep }
+                )
+                Log.d("MapViewModel", "Session loaded: ${session.name}, ${measurements.size} points, ${trajectory.size} trajectory points")
+            } catch (e: Exception) {
+                Log.e("MapViewModel", "Failed to load session", e)
+                _state.value = _state.value.copy(
+                    isLoading = false,
+                    errorMessage = "Failed to load session: ${e.message}"
+                )
+            }
+        }
     }
 
     private fun onMapTap(x: Float, y: Float) {

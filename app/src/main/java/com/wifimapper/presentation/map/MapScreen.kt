@@ -67,7 +67,8 @@ import kotlinx.coroutines.flow.Flow
 @Composable
 fun MapRoot(
     viewModel: MapViewModel,
-    onNavigateBack: () -> Unit
+    onNavigateBack: () -> Unit,
+    sessionId: String? = null
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -78,6 +79,12 @@ fun MapRoot(
                 is MapEvent.ShowSnackbar -> snackbarHostState.showSnackbar(event.message)
                 is MapEvent.NavigateBack -> onNavigateBack()
             }
+        }
+    }
+
+    LaunchedEffect(sessionId) {
+        if (sessionId != null) {
+            viewModel.onAction(MapAction.OnLoadSession(sessionId))
         }
     }
 

@@ -10,4 +10,5 @@ sealed interface MapAction {
     data object OnToggleManualMode : MapAction
     data object OnDismissError : MapAction
     data object OnDismissThrottlingWarning : MapAction
+    data class OnLoadSession(val sessionId: String) : MapAction
 }

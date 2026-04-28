@@ -18,7 +18,8 @@ import androidx.compose.ui.geometry.Offset
     val showWifiThrottlingWarning: Boolean = false,
     val stepLengthMeters: Float = 0.75f,
     val isManualMode: Boolean = false,
-    val sensorsAvailable: Boolean = true
+    val sensorsAvailable: Boolean = true,
+    val isViewOnly: Boolean = false
 )
 
  data class WifiNetworkUi(

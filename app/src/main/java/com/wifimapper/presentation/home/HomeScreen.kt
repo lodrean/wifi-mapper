@@ -17,6 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -48,6 +49,7 @@ import java.util.Locale
 @Composable
 fun HomeRoot(
     onNavigateToMap: () -> Unit,
+    onNavigateToViewSession: (String) -> Unit,
     viewModel: HomeViewModel = koinViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -55,7 +57,8 @@ fun HomeRoot(
     HomeScreen(
         state = state,
         onAction = viewModel::onAction,
-        onNavigateToMap = onNavigateToMap
+        onNavigateToMap = onNavigateToMap,
+        onNavigateToViewSession = onNavigateToViewSession
     )
 }
 
@@ -76,7 +79,8 @@ sealed interface HomeAction {
 fun HomeScreen(
     state: HomeState,
     onAction: (HomeAction) -> Unit,
-    onNavigateToMap: () -> Unit
+    onNavigateToMap: () -> Unit,
+    onNavigateToViewSession: (String) -> Unit = {}
 ) {
     Scaffold(
         topBar = {
@@ -113,7 +117,8 @@ fun HomeScreen(
                         SessionCard(
                             session = session,
                             onDelete = { onAction(HomeAction.OnDeleteSession(session.id)) },
-                            onExport = { onAction(HomeAction.OnExportSession(session)) }
+                            onExport = { onAction(HomeAction.OnExportSession(session)) },
+                            onView = { onNavigateToViewSession(session.id) }
                         )
                     }
                 }
@@ -157,7 +162,8 @@ private fun EmptyState() {
 private fun SessionCard(
     session: Session,
     onDelete: () -> Unit,
-    onExport: () -> Unit
+    onExport: () -> Unit,
+    onView: () -> Unit
 ) {
     val dateFormat = SimpleDateFormat("dd MMM yyyy, HH:mm", Locale.getDefault())
 
@@ -188,6 +194,12 @@ private fun SessionCard(
                 }
 
                 Row {
+                    IconButton(onClick = onView) {
+                        Icon(
+                            imageVector = Icons.Default.Map,
+                            contentDescription = "View on map"
+                        )
+                    }
                     IconButton(onClick = onExport) {
                         Icon(
                             imageVector = Icons.Default.Share,

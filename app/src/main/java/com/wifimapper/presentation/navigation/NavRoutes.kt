@@ -6,7 +6,7 @@ import kotlinx.serialization.Serializable
 object HomeRoute
 
 @Serializable
-object MapRoute
+data class MapRoute(val sessionId: String? = null)
 
 @Serializable
 object SettingsRoute

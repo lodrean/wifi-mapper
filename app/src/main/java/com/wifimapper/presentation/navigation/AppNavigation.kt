@@ -19,12 +19,14 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.toRoute
 import com.wifimapper.R
 import com.wifimapper.presentation.home.HomeRoot
 import com.wifimapper.presentation.map.MapRoot
 import com.wifimapper.presentation.settings.SettingsScreen
 import org.koin.androidx.compose.koinViewModel
 import com.wifimapper.presentation.map.MapViewModel
+import com.wifimapper.presentation.map.MapAction
 
 @Composable
 fun AppNavigation() {
@@ -43,15 +45,20 @@ fun AppNavigation() {
             composable<HomeRoute> {
                 HomeRoot(
                     onNavigateToMap = {
-                        navController.navigate(MapRoute)
+                        navController.navigate(MapRoute())
+                    },
+                    onNavigateToViewSession = { sessionId ->
+                        navController.navigate(MapRoute(sessionId))
                     }
                 )
             }
-            composable<MapRoute> {
+            composable<MapRoute> { backStackEntry ->
+                val route = backStackEntry.toRoute<MapRoute>()
                 val viewModel: MapViewModel = koinViewModel()
                 MapRoot(
                     viewModel = viewModel,
-                    onNavigateBack = { navController.navigateUp() }
+                    onNavigateBack = { navController.navigateUp() },
+                    sessionId = route.sessionId
                 )
             }
             composable<SettingsRoute> {
@@ -83,7 +90,7 @@ private fun BottomNavBar(navController: NavHostController) {
             label = { Text(stringResource(R.string.new_session)) },
             selected = currentDestination?.hasRoute(MapRoute::class) == true,
             onClick = {
-                navController.navigate(MapRoute) {
+                navController.navigate(MapRoute()) {
                     launchSingleTop = true
                 }
             }

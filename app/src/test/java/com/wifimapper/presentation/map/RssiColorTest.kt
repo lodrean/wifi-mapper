@@ -7,8 +7,14 @@ import org.junit.Test
 class RssiColorTest {
 
     @Test
-    fun `rssi above minus 50 returns green`() {
-        val color = rssiToColor(-40)
+    fun `rssi above minus 40 returns dark green`() {
+        val color = rssiToColor(-30)
+        assertEquals(Color(0xFF006400), color)
+    }
+
+    @Test
+    fun `rssi minus 45 returns green`() {
+        val color = rssiToColor(-45)
         assertEquals(Color(0xFF4CAF50), color)
     }
 
@@ -31,9 +37,9 @@ class RssiColorTest {
     }
 
     @Test
-    fun `rssi below minus 80 returns red`() {
-        val color = rssiToColor(-85)
-        assertEquals(Color(0xFFF44336), color)
+    fun `rssi below minus 85 returns red`() {
+        val color = rssiToColor(-90)
+        assertEquals(Color(0xFFB71C1C), color)
     }
 
     @Test
@@ -43,20 +49,20 @@ class RssiColorTest {
     }
 
     @Test
-    fun `boundary minus 60 returns light green`() {
+    fun `boundary minus 60 returns lime`() {
         val color = rssiToColor(-60)
-        assertEquals(Color(0xFF8BC34A), color)
+        assertEquals(Color(0xFFCDDC39), color)
     }
 
     @Test
-    fun `boundary minus 70 returns yellow`() {
+    fun `boundary minus 70 returns amber`() {
         val color = rssiToColor(-70)
-        assertEquals(Color(0xFFFFEB3B), color)
+        assertEquals(Color(0xFFFFC107), color)
     }
 
     @Test
-    fun `boundary minus 80 returns orange`() {
+    fun `boundary minus 80 returns deep orange`() {
         val color = rssiToColor(-80)
-        assertEquals(Color(0xFFFF9800), color)
+        assertEquals(Color(0xFFFF5722), color)
     }
 }
