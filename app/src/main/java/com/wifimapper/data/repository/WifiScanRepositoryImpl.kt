@@ -9,6 +9,7 @@ import android.annotation.SuppressLint
 import android.content.pm.PackageManager
 import android.net.wifi.WifiManager
 import android.os.Build
+import android.util.Log
 import androidx.core.content.ContextCompat
 import com.wifimapper.domain.model.WifiScanResult
 import com.wifimapper.domain.repository.WifiScanRepository
@@ -27,10 +28,14 @@ class WifiScanRepositoryImpl(
 
     @SuppressLint("MissingPermission")
     override suspend fun scan(): List<WifiScanResult> {
-        if (!hasPermission()) return emptyList()
+        if (!hasPermission()) {
+            Log.w("WifiScanRepo", "scan() called without permission")
+            return emptyList()
+        }
 
+        Log.d("WifiScanRepo", "Starting WiFi scan...")
         wifiManager.startScan()
-        return wifiManager.scanResults.map { result ->
+        val results = wifiManager.scanResults.map { result ->
             WifiScanResult(
                 ssid = result.SSID ?: "",
                 bssid = result.BSSID ?: "",
@@ -39,6 +44,11 @@ class WifiScanRepositoryImpl(
                 timestamp = System.currentTimeMillis()
             )
         }
+        Log.d("WifiScanRepo", "scan() returned ${results.size} results")
+        results.forEach {
+            Log.d("WifiScanRepo", "  [${it.ssid}] ${it.bssid} @ ${it.rssiDbm}dBm")
+        }
+        return results
     }
 
     @SuppressLint("MissingPermission")
@@ -50,8 +60,10 @@ class WifiScanRepositoryImpl(
 
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
+                Log.d("WifiScanRepo", "Broadcast received: ${intent?.action}")
                 if (intent?.action == WifiManager.SCAN_RESULTS_AVAILABLE_ACTION) {
                     val success = intent.getBooleanExtra(WifiManager.EXTRA_RESULTS_UPDATED, false)
+                    Log.d("WifiScanRepo", "Scan results updated: $success")
                     if (success) {
                         val results = wifiManager.scanResults.map { result ->
                             WifiScanResult(
@@ -62,6 +74,7 @@ class WifiScanRepositoryImpl(
                                 timestamp = System.currentTimeMillis()
                             )
                         }
+                        Log.d("WifiScanRepo", "Sending ${results.size} scan results via stream")
                         trySend(results)
                     }
                 }

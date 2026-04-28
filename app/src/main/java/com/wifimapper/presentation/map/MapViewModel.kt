@@ -1,5 +1,7 @@
 package com.wifimapper.presentation.map
 
+import android.content.Context
+import android.content.Intent
 import android.util.Log
 import androidx.compose.ui.geometry.Offset
 import androidx.lifecycle.ViewModel
@@ -25,6 +27,7 @@ import kotlinx.coroutines.launch
 import java.util.UUID
 
 class MapViewModel(
+    private val context: Context,
     private val createSessionUseCase: CreateSessionUseCase,
     private val sessionRepository: SessionRepository,
     private val wifiScanRepository: WifiScanRepository,
@@ -63,7 +66,21 @@ class MapViewModel(
     }
 
     private fun startSession() {
-        if (_state.value.isTracking) return
+        if (_state.value.isTracking) {
+            Log.d("MapViewModel", "Session already tracking, ignoring start request")
+            return
+        }
+
+        Log.d("MapViewModel", "Starting session...")
+
+        // Start foreground service for background tracking
+        try {
+            val serviceIntent = Intent(context, com.wifimapper.service.TrackingService::class.java)
+            context.startForegroundService(serviceIntent)
+            Log.d("MapViewModel", "TrackingService started")
+        } catch (e: Exception) {
+            Log.e("MapViewModel", "Failed to start TrackingService", e)
+        }
 
         viewModelScope.launch {
             try {
@@ -108,7 +125,21 @@ class MapViewModel(
     }
 
     private fun stopSession() {
-        if (!_state.value.isTracking) return
+        if (!_state.value.isTracking) {
+            Log.d("MapViewModel", "Session not tracking, ignoring stop request")
+            return
+        }
+
+        Log.d("MapViewModel", "Stopping session...")
+
+        // Stop foreground service
+        try {
+            val serviceIntent = Intent(context, com.wifimapper.service.TrackingService::class.java)
+            context.stopService(serviceIntent)
+            Log.d("MapViewModel", "TrackingService stopped")
+        } catch (e: Exception) {
+            Log.e("MapViewModel", "Failed to stop TrackingService", e)
+        }
 
         viewModelScope.launch {
             sensorTrackingRepository.stopTracking()
@@ -158,8 +189,12 @@ class MapViewModel(
     }
 
     private fun onPositionUpdate(position: PdrPosition) {
+        Log.d("MapViewModel", "Position update: x=${position.x}, y=${position.y}, heading=${position.headingDegrees}, steps=${position.stepCount}")
+        val previousStepCount = _state.value.stepCount
         currentPosition = position
         val newOffset = Offset(position.x, position.y)
+
+        val isNewStep = position.stepCount > previousStepCount
 
         val trajectoryPoint = TrajectoryPoint(
             id = UUID.randomUUID().toString(),
@@ -168,7 +203,7 @@ class MapViewModel(
             y = position.y,
             headingDegrees = position.headingDegrees,
             timestamp = System.currentTimeMillis(),
-            isStep = position.stepCount > _state.value.stepCount
+            isStep = isNewStep
         )
         trajectoryBuffer.add(trajectoryPoint)
 
@@ -189,7 +224,8 @@ class MapViewModel(
         }
 
         // Trigger WiFi scan on each step
-        if (position.stepCount > _state.value.stepCount) {
+        if (isNewStep) {
+            Log.d("MapViewModel", "New step detected, triggering WiFi scan")
             viewModelScope.launch { performWifiScan() }
         }
     }
@@ -205,7 +241,12 @@ class MapViewModel(
 
     private suspend fun performWifiScan() {
         try {
+            Log.d("MapViewModel", "Performing WiFi scan...")
             val results = wifiScanRepository.scan()
+            Log.d("MapViewModel", "WiFi scan returned ${results.size} networks")
+            results.forEach {
+                Log.d("MapViewModel", "  SSID=${it.ssid}, BSSID=${it.bssid}, RSSI=${it.rssiDbm}")
+            }
             updateWifiNetworks(results)
             saveMeasurements(results)
         } catch (e: Exception) {
@@ -228,6 +269,7 @@ class MapViewModel(
     private fun saveMeasurements(results: List<WifiScanResult>) {
         val sessionId = _state.value.sessionId
         val selectedBssid = _state.value.selectedNetwork
+        Log.d("MapViewModel", "saveMeasurements: sessionId=$sessionId, selectedBssid=$selectedBssid, currentPos=(${currentPosition.x}, ${currentPosition.y})")
 
         results.forEach { result ->
             // If no network selected, save all. Otherwise save only selected.
@@ -264,6 +306,7 @@ class MapViewModel(
         if (measurementBuffer.size >= 20) {
             viewModelScope.launch { flushBuffersToDb() }
         }
+        Log.d("MapViewModel", "Total UI measurements: ${_state.value.measurements.size}")
     }
 
     private suspend fun flushBuffersToDb() {
@@ -282,9 +325,16 @@ class MapViewModel(
     }
 
     private fun onMapTap(x: Float, y: Float) {
-        if (!_state.value.isTracking) return
-        if (!_state.value.isManualMode) return
+        if (!_state.value.isTracking) {
+            Log.d("MapViewModel", "Map tap ignored: not tracking")
+            return
+        }
+        if (!_state.value.isManualMode) {
+            Log.d("MapViewModel", "Map tap ignored: not in manual mode")
+            return
+        }
 
+        Log.d("MapViewModel", "Map tap at world coordinates: x=$x, y=$y")
         currentPosition = PdrPosition(x, y, currentPosition.headingDegrees, currentPosition.stepCount + 1)
 
         val trajectoryPoint = TrajectoryPoint(
@@ -313,6 +363,7 @@ class MapViewModel(
                 flushBuffersToDb()
             }
         }
+        Log.d("MapViewModel", "Manual tap processed. Step count: ${currentPosition.stepCount}")
     }
 
     private fun toggleManualMode() {

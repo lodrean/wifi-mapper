@@ -5,6 +5,7 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.util.Log
 import com.wifimapper.domain.model.PdrPosition
 import com.wifimapper.domain.repository.SensorTrackingRepository
 import kotlinx.coroutines.channels.Channel
@@ -65,14 +66,31 @@ class SensorTrackingRepositoryImpl(
 
         val samplingRate = SensorManager.SENSOR_DELAY_GAME
 
+        Log.d("SensorTracking", "startTracking: stepLength=$stepLengthMeters")
+        Log.d("SensorTracking", "Sensors available: accel=${accelerometer != null}, mag=${magneticField != null}, gyro=${gyroscope != null}, rotVec=${rotationVector != null}")
+
         rotationVector?.let {
             sensorManager.registerListener(this, it, samplingRate)
-        } ?: run {
-            accelerometer?.let { sensorManager.registerListener(this, it, samplingRate) }
-            magneticField?.let { sensorManager.registerListener(this, it, samplingRate) }
+            Log.d("SensorTracking", "Registered Rotation Vector sensor")
         }
 
-        gyroscope?.let { sensorManager.registerListener(this, it, samplingRate) }
+        // Always register accelerometer for step detection, even if rotation vector is available
+        accelerometer?.let {
+            sensorManager.registerListener(this, it, samplingRate)
+            Log.d("SensorTracking", "Registered Accelerometer sensor")
+        }
+
+        if (rotationVector == null) {
+            magneticField?.let {
+                sensorManager.registerListener(this, it, samplingRate)
+                Log.d("SensorTracking", "Registered Magnetic Field sensor")
+            }
+        }
+
+        gyroscope?.let {
+            sensorManager.registerListener(this, it, samplingRate)
+            Log.d("SensorTracking", "Registered Gyroscope sensor")
+        }
     }
 
     override fun stopTracking() {
@@ -102,8 +120,8 @@ class SensorTrackingRepositoryImpl(
                 SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
                 SensorManager.getOrientation(rotationMatrix, orientation)
                 currentHeading = Math.toDegrees(orientation[0].toDouble()).toFloat()
-                // Normalize to 0-360
                 if (currentHeading < 0) currentHeading += 360f
+                Log.v("SensorTracking", "ROTATION_VECTOR: heading=${"%.1f".format(currentHeading)}")
             }
 
             Sensor.TYPE_ACCELEROMETER -> {
@@ -153,14 +171,12 @@ class SensorTrackingRepositoryImpl(
     }
 
     private fun detectStep() {
-        // Remove gravity approximation with high-pass filter
         val magnitude = sqrt(
             accelValues[0] * accelValues[0] +
             accelValues[1] * accelValues[1] +
             accelValues[2] * accelValues[2]
         )
 
-        // High-pass filter: remove gravity (~9.8)
         val filteredMagnitude = magnitude - 9.8f
 
         accelMagnitudeHistory.add(filteredMagnitude)
@@ -168,17 +184,16 @@ class SensorTrackingRepositoryImpl(
             accelMagnitudeHistory.removeAt(0)
         }
 
-        // Simple peak detection
         val now = System.currentTimeMillis()
         if (filteredMagnitude > stepThreshold &&
             filteredMagnitude > lastAccelMagnitude &&
             now - lastStepTime > minStepIntervalMs
         ) {
-            // Check if it's a peak
             if (accelMagnitudeHistory.size >= 3) {
                 val prev = accelMagnitudeHistory[accelMagnitudeHistory.size - 2]
                 val prev2 = accelMagnitudeHistory[accelMagnitudeHistory.size - 3]
                 if (filteredMagnitude > prev && prev > prev2) {
+                    Log.v("SensorTracking", "Peak detected: filtered=${"%.2f".format(filteredMagnitude)}, prev=${"%.2f".format(prev)}, prev2=${"%.2f".format(prev2)}")
                     onStepDetected()
                     lastStepTime = now
                 }
@@ -193,10 +208,12 @@ class SensorTrackingRepositoryImpl(
         val headingRad = Math.toRadians(currentHeading.toDouble())
         currentX += stepLengthMeters * sin(headingRad).toFloat()
         currentY += stepLengthMeters * cos(headingRad).toFloat()
+        Log.d("SensorTracking", "STEP DETECTED #$stepCount: heading=${"%.1f".format(currentHeading)}, newPos=($currentX, $currentY)")
         emitPosition()
     }
 
     private fun emitPosition() {
+        Log.v("SensorTracking", "emitPosition: x=$currentX, y=$currentY, heading=$currentHeading, steps=$stepCount")
         _positionChannel.trySend(
             PdrPosition(
                 x = currentX,

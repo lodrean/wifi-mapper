@@ -1,5 +1,6 @@
 package com.wifimapper.presentation.map.components
 
+import android.util.Log
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
@@ -36,24 +37,32 @@ fun HeatmapCanvas(
 ) {
     var viewport by remember { mutableStateOf(initialViewport) }
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
+    var hasUserInteracted by remember { mutableStateOf(false) }
 
-    // Auto-center on first trajectory point
-    if (trajectory.isNotEmpty() && viewport.offsetX == 0f && viewport.offsetY == 0f && canvasSize != IntSize.Zero) {
-        val first = trajectory.first()
-        viewport = viewport.copy(
-            offsetX = canvasSize.width / 2f - first.x * viewport.scale,
-            offsetY = canvasSize.height / 2f - first.y * viewport.scale
-        )
+    // Auto-center on first trajectory point or current position if not yet interacted
+    if (!hasUserInteracted && canvasSize != IntSize.Zero) {
+        val target = currentPosition ?: trajectory.firstOrNull()?.let { Offset(it.x, it.y) }
+        if (target != null) {
+            val targetOffsetX = canvasSize.width / 2f - target.x * viewport.scale
+            val targetOffsetY = canvasSize.height / 2f - target.y * viewport.scale
+            if (viewport.offsetX != targetOffsetX || viewport.offsetY != targetOffsetY) {
+                Log.d("HeatmapCanvas", "Auto-centering on target=($target), viewport=($targetOffsetX, $targetOffsetY)")
+                viewport = viewport.copy(
+                    offsetX = targetOffsetX,
+                    offsetY = targetOffsetY
+                )
+            }
+        }
     }
 
-    // Auto-follow current position in manual mode
+    // Auto-follow current position in manual mode (even if user interacted)
     if (isManualMode && currentPosition != null && canvasSize != IntSize.Zero) {
         val targetOffsetX = canvasSize.width / 2f - currentPosition.x * viewport.scale
         val targetOffsetY = canvasSize.height / 2f - currentPosition.y * viewport.scale
-        // Smoothly center only if position changed significantly
         if (kotlin.math.abs(viewport.offsetX - targetOffsetX) > 1f ||
             kotlin.math.abs(viewport.offsetY - targetOffsetY) > 1f
         ) {
+            Log.d("HeatmapCanvas", "Auto-follow manual mode position: $currentPosition")
             viewport = viewport.copy(
                 offsetX = targetOffsetX,
                 offsetY = targetOffsetY
@@ -67,10 +76,10 @@ fun HeatmapCanvas(
             .onSizeChanged { canvasSize = it }
             .pointerInput(Unit) {
                 detectTransformGestures { centroid, pan, zoom, _ ->
+                    hasUserInteracted = true
                     val newScale = (viewport.scale * zoom).coerceIn(10f, 500f)
                     val scaleRatio = newScale / viewport.scale
 
-                    // Adjust offset to zoom around centroid
                     val newOffsetX = centroid.x - (centroid.x - viewport.offsetX) * scaleRatio + pan.x
                     val newOffsetY = centroid.y - (centroid.y - viewport.offsetY) * scaleRatio + pan.y
 
@@ -84,9 +93,9 @@ fun HeatmapCanvas(
             .pointerInput(isManualMode, viewport) {
                 if (isManualMode) {
                     detectTapGestures { tapOffset ->
-                        // Convert screen coordinates to world coordinates
                         val worldX = (tapOffset.x - viewport.offsetX) / viewport.scale
                         val worldY = (tapOffset.y - viewport.offsetY) / viewport.scale
+                        Log.d("HeatmapCanvas", "Tap at screen=($tapOffset) -> world=($worldX, $worldY)")
                         onTap(Offset(worldX, worldY))
                     }
                 }
@@ -95,7 +104,10 @@ fun HeatmapCanvas(
         drawGrid(viewport)
         drawHeatmap(measurements, viewport)
         drawTrajectory(trajectory, viewport)
-        currentPosition?.let { drawCurrentPosition(it, viewport) }
+        currentPosition?.let {
+            Log.d("HeatmapCanvas", "Drawing current position: $it, screen=(${it.x * viewport.scale + viewport.offsetX}, ${it.y * viewport.scale + viewport.offsetY})")
+            drawCurrentPosition(it, viewport)
+        }
     }
 }
 

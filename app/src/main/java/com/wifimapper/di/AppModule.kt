@@ -55,5 +55,5 @@ val appModule = module {
 
     // ViewModels
     viewModel { HomeViewModel(get(), get(), get(), get(), get(), androidContext()) }
-    viewModel { MapViewModel(get(), get(), get(), get()) }
+    viewModel { MapViewModel(androidContext(), get(), get(), get(), get()) }
 }
