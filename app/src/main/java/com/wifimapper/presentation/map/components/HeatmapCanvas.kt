@@ -1,13 +1,11 @@
 package com.wifimapper.presentation.map.components
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -19,12 +17,12 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.IntSize
 import com.wifimapper.presentation.map.MapViewport
 import com.wifimapper.presentation.map.MeasurementUi
 import com.wifimapper.presentation.map.TrajectoryPointUi
 import com.wifimapper.presentation.map.rssiToColor
-import kotlin.math.abs
 
 @Composable
 fun HeatmapCanvas(
@@ -37,30 +35,36 @@ fun HeatmapCanvas(
     onTap: (Offset) -> Unit = {}
 ) {
     var viewport by remember { mutableStateOf(initialViewport) }
-    var isDragging by remember { mutableStateOf(false) }
+    var canvasSize by remember { mutableStateOf(IntSize.Zero) }
 
     // Auto-center on first trajectory point
-    if (trajectory.isNotEmpty() && viewport.offsetX == 0f && viewport.offsetY == 0f) {
+    if (trajectory.isNotEmpty() && viewport.offsetX == 0f && viewport.offsetY == 0f && canvasSize != IntSize.Zero) {
         val first = trajectory.first()
         viewport = viewport.copy(
-            offsetX = -first.x * viewport.scale,
-            offsetY = -first.y * viewport.scale
+            offsetX = canvasSize.width / 2f - first.x * viewport.scale,
+            offsetY = canvasSize.height / 2f - first.y * viewport.scale
         )
+    }
+
+    // Auto-follow current position in manual mode
+    if (isManualMode && currentPosition != null && canvasSize != IntSize.Zero) {
+        val targetOffsetX = canvasSize.width / 2f - currentPosition.x * viewport.scale
+        val targetOffsetY = canvasSize.height / 2f - currentPosition.y * viewport.scale
+        // Smoothly center only if position changed significantly
+        if (kotlin.math.abs(viewport.offsetX - targetOffsetX) > 1f ||
+            kotlin.math.abs(viewport.offsetY - targetOffsetY) > 1f
+        ) {
+            viewport = viewport.copy(
+                offsetX = targetOffsetX,
+                offsetY = targetOffsetY
+            )
+        }
     }
 
     Canvas(
         modifier = modifier
             .fillMaxSize()
-            .pointerInput(isManualMode) {
-                if (isManualMode) {
-                    detectTapGestures { tapOffset ->
-                        // Convert screen coordinates to world coordinates
-                        val worldX = (tapOffset.x - viewport.offsetX) / viewport.scale
-                        val worldY = (tapOffset.y - viewport.offsetY) / viewport.scale
-                        onTap(Offset(worldX, worldY))
-                    }
-                }
-            }
+            .onSizeChanged { canvasSize = it }
             .pointerInput(Unit) {
                 detectTransformGestures { centroid, pan, zoom, _ ->
                     val newScale = (viewport.scale * zoom).coerceIn(10f, 500f)
@@ -77,17 +81,14 @@ fun HeatmapCanvas(
                     )
                 }
             }
-            .pointerInput(Unit) {
-                detectDragGestures(
-                    onDragStart = { isDragging = true },
-                    onDragEnd = { isDragging = false },
-                    onDragCancel = { isDragging = false }
-                ) { change, dragAmount ->
-                    change.consume()
-                    viewport = viewport.copy(
-                        offsetX = viewport.offsetX + dragAmount.x,
-                        offsetY = viewport.offsetY + dragAmount.y
-                    )
+            .pointerInput(isManualMode, viewport) {
+                if (isManualMode) {
+                    detectTapGestures { tapOffset ->
+                        // Convert screen coordinates to world coordinates
+                        val worldX = (tapOffset.x - viewport.offsetX) / viewport.scale
+                        val worldY = (tapOffset.y - viewport.offsetY) / viewport.scale
+                        onTap(Offset(worldX, worldY))
+                    }
                 }
             }
     ) {
