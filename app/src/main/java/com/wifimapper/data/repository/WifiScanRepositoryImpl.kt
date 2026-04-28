@@ -5,6 +5,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.annotation.SuppressLint
 import android.content.pm.PackageManager
 import android.net.wifi.WifiManager
 import android.os.Build
@@ -24,6 +25,7 @@ class WifiScanRepositoryImpl(
         context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
     }
 
+    @SuppressLint("MissingPermission")
     override suspend fun scan(): List<WifiScanResult> {
         if (!hasPermission()) return emptyList()
 
@@ -39,6 +41,7 @@ class WifiScanRepositoryImpl(
         }
     }
 
+    @SuppressLint("MissingPermission")
     override fun getScanResultsStream(): Flow<List<WifiScanResult>> = callbackFlow {
         if (!hasPermission()) {
             close()
